@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Ballenoil · Gasolina 95</title>
+<style>
+:root{--bg:#f4f6f9;--card:#fff;--tx:#14181f;--mut:#667085;--bd:#e1e5eb;--ac:#0a6cff;--g:#15803d;--y:#b45309;--r:#c62828;--grid:#d9dee6;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
+@media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1117;--card:#181c24;--tx:#eef1f6;--mut:#98a2b3;--bd:#283040;--ac:#5aa2ff;--g:#4ade80;--y:#fbbf24;--r:#f87171;--grid:#222a37}}
+:root[data-theme="dark"]{--bg:#0e1117;--card:#181c24;--tx:#eef1f6;--mut:#98a2b3;--bd:#283040;--ac:#5aa2ff;--g:#4ade80;--y:#fbbf24;--r:#f87171;--grid:#222a37}
+*{box-sizing:border-box}html,body{height:100%;margin:0}
+body{background:var(--bg);color:var(--tx);font:15px/1.35 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;display:flex;flex-direction:column;overflow:hidden}
+header{display:flex;align-items:center;gap:10px;padding:10px 14px;background:var(--card);border-bottom:1px solid var(--bd)}
+h1{font-size:17px;margin:0;flex:1}h1 small{display:block;font-weight:400;color:var(--mut);font-size:12px}
+button{font:inherit;color:inherit;border:1px solid var(--bd);background:var(--card);border-radius:10px;padding:7px 12px;cursor:pointer}
+#ref{width:36px;height:36px;padding:0;border-radius:50%;font-size:18px;line-height:1}
+.spin{animation:s .8s linear infinite}@keyframes s{to{transform:rotate(360deg)}}
+.tabs{display:flex;gap:6px;padding:8px 14px;background:var(--card);border-bottom:1px solid var(--bd)}
+.tabs button{flex:1}.on{background:var(--ac)!important;color:#fff!important;border-color:var(--ac)!important}
+main{flex:1;min-height:0;position:relative}
+#map{position:absolute;inset:0;width:100%;height:100%;touch-action:none;background:var(--bg)}
+#list{position:absolute;inset:0;overflow:auto;padding:10px 14px}
+.sort{display:flex;gap:6px;align-items:center;margin-bottom:8px;color:var(--mut);font-size:13px}.sort button{padding:5px 10px}
+.row{display:flex;align-items:center;gap:12px;background:var(--card);border:1px solid var(--bd);border-radius:12px;padding:10px 12px;margin-bottom:8px}
+.row .p{font-weight:700;font-size:18px;min-width:64px}.row .i{flex:1;min-width:0}.row .i b{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.row .i span,.row .d{color:var(--mut);font-size:12.5px}.row .d{text-align:right;white-space:nowrap}
+.card{position:absolute;left:10px;right:10px;bottom:10px;background:var(--card);border:1px solid var(--bd);border-radius:14px;padding:12px 14px;box-shadow:0 6px 24px #0003;display:none}
+.card a{display:inline-block;margin-top:8px;color:#fff;background:var(--ac);padding:7px 14px;border-radius:10px;text-decoration:none;font-weight:600}
+.zoom{position:absolute;right:10px;top:10px;display:flex;flex-direction:column;gap:6px}.zoom button{width:38px;height:38px;padding:0;font-size:20px}
+#msg{margin:8px 14px;padding:9px 12px;border-radius:10px;background:#fef3c7;color:#78350f;font-size:13px;display:none}
+.empty{color:var(--mut);text-align:center;padding:30px 10px}
+</style></head><body>
+<header><h1>Ballenoil · Gasolina 95<small id="sub">Cargando…</small></h1><button id="ref" title="Actualizar precios" aria-label="Actualizar precios">⟳</button></header>
+<div class="tabs"><button id="tm" class="on">Mapa</button><button id="tl">Lista</button></div>
+<div id="msg"></div>
+<main>
+<svg id="map"></svg>
+<div class="zoom" id="zm"><button id="zi">+</button><button id="zo">−</button><button id="loc" title="Mi posición">◎</button></div>
+<div class="card" id="card"></div>
+<div id="list" hidden></div>
+</main>
+<script>
+const API='https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/';
+const $=id=>document.getElementById(id);
+let S=[],me=null,sort='precio',tab='mapa',sel=null,fecha='',view={lat:40.4168,lon:-3.7038,z:500};
+const num=v=>{const n=parseFloat(String(v==null?'':v).replace(',','.'));return isFinite(n)?n:null};
+const fmt=p=>p==null?'—':p.toFixed(3).replace('.',',')+' €';
+const esc=s=>String(s||'').replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function dist(a,b,c,d){const r=Math.PI/180,x=(c-a)*r,y=(d-b)*r,h=Math.sin(x/2)**2+Math.cos(a*r)*Math.cos(c*r)*Math.sin(y/2)**2;return 12742*Math.asin(Math.sqrt(h))}
+function msg(t){const m=$('msg');m.textContent=t||'';m.style.display=t?'block':'none'}
+async function load(){
+  $('ref').classList.add('spin');msg('');
+  try{
+    const r=await fetch(API,{cache:'no-store'});const j=await r.json();
+    S=j.ListaEESSPrecio.filter(e=>/ballenoil/i.test(e['Rótulo']||'')).map(e=>({id:e.IDEESS,name:e['Rótulo'],addr:e['Dirección'],loc:e.Localidad||e.Municipio,p:num(e['Precio Gasolina 95 E5']),lat:num(e.Latitud),lon:num(e['Longitud (WGS84)'])})).filter(e=>e.lat!=null&&e.lon!=null);
+    fecha=j.Fecha;try{localStorage.setItem('bo',JSON.stringify({S,fecha}))}catch(e){}
+  }catch(e){
+    let c=null;try{c=JSON.parse(localStorage.getItem('bo'))}catch(_){}
+    if(c){S=c.S;fecha=c.fecha;msg('Sin conexión con el Ministerio: se muestran los últimos precios guardados.')}
+    else msg('No se pudieron cargar los precios. Esta página alojada bloquea las conexiones externas; ábrela desde tu propio hosting o navegador.')
+  }
+  $('ref').classList.remove('spin');
+  $('sub').textContent=S.length?S.length+' estaciones · '+(fecha||'sin fecha'):'Sin datos';
+  fit();render();
+}
+function locate(cb){
+  if(!navigator.geolocation){cb&&cb();return}
+  navigator.geolocation.getCurrentPosition(p=>{me={lat:p.coords.latitude,lon:p.coords.longitude};cb&&cb(true)},()=>{cb&&cb()},{enableHighAccuracy:true,timeout:8000,maximumAge:60000})
+}
+function fit(){
+  const W=$('map').clientWidth||360,H=$('map').clientHeight||500;
+  let pts=S.slice();
+  if(me){pts=pts.map(s=>({...s,d:dist(me.lat,me.lon,s.lat,s.lon)})).sort((a,b)=>a.d-b.d).slice(0,12)}
+  if(me)pts.push(me);
+  if(!pts.length)return;
+  const la=pts.map(p=>p.lat),lo=pts.map(p=>p.lon);
+  const a=Math.min(...la),b=Math.max(...la),c=Math.min(...lo),d=Math.max(...lo);
+  view.lat=(a+b)/2;view.lon=(c+d)/2;
+  const k=Math.cos(view.lat*Math.PI/180),dx=Math.max((d-c)*k,.01),dy=Math.max(b-a,.01);
+  view.z=Math.min(.8*W/dx,.8*H/dy,30000);
+}
+function px(lat,lon){const m=$('map'),k=Math.cos(view.lat*Math.PI/180);return[m.clientWidth/2+(lon-view.lon)*k*view.z,m.clientHeight/2-(lat-view.lat)*view.z]}
+function col(p,lo,hi){if(p==null)return'#888';const t=hi>lo?(p-lo)/(hi-lo):0;return t<.34?'var(--g)':t<.67?'var(--y)':'var(--r)'}
+function renderMap(){
+  const m=$('map'),W=m.clientWidth,H=m.clientHeight,ps=S.map(s=>s.p).filter(p=>p!=null),lo=Math.min(...ps),hi=Math.max(...ps);
+  let h='';
+  const step=view.z>3000?.01:view.z>300?.1:1;
+  const k=Math.cos(view.lat*Math.PI/180);
+  for(let lon=Math.floor((view.lon-W/2/(k*view.z))/step)*step;lon<=view.lon+W/2/(k*view.z);lon+=step){const x=px(0,lon)[0]*1;h+=`<line x1="${x}" x2="${x}" y1="0" y2="${H}" stroke="var(--grid)"/>`}
+  for(let lat=Math.floor((view.lat-H/2/view.z)/step)*step;lat<=view.lat+H/2/view.z;lat+=step){const y=px(lat,0)[1];h+=`<line y1="${y}" y2="${y}" x1="0" x2="${W}" stroke="var(--grid)"/>`}
+  if(me){const[x,y]=px(me.lat,me.lon);[5,10,25].forEach(km=>{const r=km/111.2*view.z;if(r>20&&r<W*2)h+=`<circle cx="${x}" cy="${y}" r="${r}" fill="none" stroke="var(--ac)" stroke-opacity=".3" stroke-dasharray="4 4"/><text x="${x+4}" y="${y-r+12}" font-size="10" fill="var(--mut)">${km} km</text>`})}
+  const vis=S.filter(s=>{const[x,y]=px(s.lat,s.lon);return x>-40&&x<W+40&&y>-30&&y<H+30}).sort((a,b)=>(a===sel)-(b===sel));
+  vis.forEach(s=>{const[x,y]=px(s.lat,s.lon),t=fmt(s.p).replace(' €',''),c=col(s.p,lo,hi),on=s===sel;
+    h+=`<g data-id="${esc(s.id)}" transform="translate(${x},${y})"><path d="M0 0L-5 -7H5Z" fill="${c}"/><rect x="-26" y="-29" width="52" height="22" rx="7" fill="${c}" stroke="${on?'var(--tx)':'#fff'}" stroke-width="${on?2.5:1.5}"/><text y="-13.5" text-anchor="middle" font-size="12" font-weight="700" fill="#fff">${t}</text></g>`});
+  if(me){const[x,y]=px(me.lat,me.lon);h+=`<circle cx="${x}" cy="${y}" r="16" fill="var(--ac)" opacity=".2"/><circle cx="${x}" cy="${y}" r="7" fill="var(--ac)" stroke="#fff" stroke-width="2.5"/>`}
+  if(!S.length)h+=`<text x="${W/2}" y="${H/2}" text-anchor="middle" fill="var(--mut)">Sin estaciones que mostrar</text>`;
+  m.innerHTML=h;
+}
+function withD(){return S.map(s=>({...s,d:me?dist(me.lat,me.lon,s.lat,s.lon):null}))}
+function renderList(){
+  let a=withD();
+  a.sort((x,y)=>sort==='precio'?((x.p==null)-(y.p==null)||x.p-y.p||(x.d??0)-(y.d??0)):((x.d==null)-(y.d==null)||x.d-y.d));
+  const l=$('list');
+  l.innerHTML=`<div class="sort">Ordenar por <button data-s="precio" class="${sort==='precio'?'on':''}">Precio</button><button data-s="distancia" class="${sort==='distancia'?'on':''}">Distancia</button></div>`+
+  (a.length?a.map(s=>`<div class="row" data-id="${esc(s.id)}"><div class="p">${fmt(s.p)}</div><div class="i"><b>${esc(s.name)} · ${esc(s.loc)}</b><span>${esc(s.addr)}</span></div><div class="d">${s.d==null?'':s.d.toFixed(1).replace('.',',')+' km'}</div></div>`).join(''):'<div class="empty">Sin datos</div>')+
+  (me?'':'<div class="empty">Activa la ubicación para ver distancias.</div>');
+}
+function renderCard(){
+  const c=$('card');if(!sel){c.style.display='none';return}
+  const d=me?dist(me.lat,me.lon,sel.lat,sel.lon):null;
+  c.style.display='block';
+  c.innerHTML=`<b style="font-size:17px">${fmt(sel.p)}</b> <span style="color:var(--mut)">Gasolina 95</span><br><b>${esc(sel.name)}</b> · ${esc(sel.loc)}<br><span style="color:var(--mut)">${esc(sel.addr)}${d!=null?' · '+d.toFixed(1).replace('.',',')+' km':''}</span><br><a target="_blank" rel="noopener" href="https://www.google.com/maps/dir/?api=1&destination=${sel.lat},${sel.lon}">Cómo llegar</a>`;
+}
+function render(){$('map').style.display=tab==='mapa'?'block':'none';$('zm').style.display=tab==='mapa'?'flex':'none';$('list').hidden=tab!=='lista';$('tm').classList.toggle('on',tab==='mapa');$('tl').classList.toggle('on',tab==='lista');if(tab==='mapa'){renderMap();renderCard()}else{$('card').style.display='none';renderList()}}
+$('tm').onclick=()=>{tab='mapa';render()};$('tl').onclick=()=>{tab='lista';render()};
+$('ref').onclick=()=>locate(()=>load());
+$('loc').onclick=()=>locate(ok=>{if(ok){view.lat=me.lat;view.lon=me.lon;view.z=Math.max(view.z,1500)}render()});
+$('zi').onclick=()=>{view.z*=1.5;render()};$('zo').onclick=()=>{view.z/=1.5;render()};
+$('list').onclick=e=>{
+  const b=e.target.closest('[data-s]');if(b){sort=b.dataset.s;renderList();return}
+  const r=e.target.closest('.row');if(r){sel=S.find(s=>String(s.id)===r.dataset.id);view.lat=sel.lat;view.lon=sel.lon;view.z=Math.max(view.z,3000);tab='mapa';render()}
+};
+const ptr=new Map();let down=null,moved=0,pd=0;
+const m=$('map');
+m.addEventListener('pointerdown',e=>{m.setPointerCapture(e.pointerId);ptr.set(e.pointerId,[e.clientX,e.clientY]);if(ptr.size===1){down=e.target;moved=0}if(ptr.size===2){const[a,b]=[...ptr.values()];pd=Math.hypot(a[0]-b[0],a[1]-b[1])}});
+m.addEventListener('pointermove',e=>{
+  if(!ptr.has(e.pointerId))return;const o=ptr.get(e.pointerId);ptr.set(e.pointerId,[e.clientX,e.clientY]);
+  if(ptr.size===1){const dx=e.clientX-o[0],dy=e.clientY-o[1];moved+=Math.abs(dx)+Math.abs(dy);const k=Math.cos(view.lat*Math.PI/180);view.lon-=dx/(k*view.z);view.lat+=dy/view.z;renderMap()}
+  else if(ptr.size===2){const[a,b]=[...ptr.values()],d=Math.hypot(a[0]-b[0],a[1]-b[1]);if(pd){view.z*=d/pd;moved+=10;renderMap()}pd=d}
+});
+const up=e=>{ptr.delete(e.pointerId);if(ptr.size===0&&e.type==='pointerup'&&moved<8){const g=down&&down.closest&&down.closest('[data-id]');sel=g?S.find(s=>String(s.id)===g.dataset.id):null;render()}};
+m.addEventListener('pointerup',up);m.addEventListener('pointercancel',up);
+m.addEventListener('wheel',e=>{e.preventDefault();view.z*=e.deltaY<0?1.2:1/1.2;renderMap()},{passive:false});
+addEventListener('resize',render);
+render();
+locate(()=>load());
+</script></body></html>
