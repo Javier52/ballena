@@ -1,7 +1,7 @@
 <!doctype html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Ballenoil · Gasolina 95</title>
+<title>Ballenoil Madrid · Gasolina 95</title>
 <style>
 :root{--bg:#f4f6f9;--card:#fff;--tx:#14181f;--mut:#667085;--bd:#e1e5eb;--ac:#0a6cff;--g:#15803d;--y:#b45309;--r:#c62828;--grid:#d9dee6;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}
 @media (prefers-color-scheme:dark){:root:not([data-theme="light"]){--bg:#0e1117;--card:#181c24;--tx:#eef1f6;--mut:#98a2b3;--bd:#283040;--ac:#5aa2ff;--g:#4ade80;--y:#fbbf24;--r:#f87171;--grid:#222a37}}
@@ -28,7 +28,7 @@ main{flex:1;min-height:0;position:relative}
 #msg{margin:8px 14px;padding:9px 12px;border-radius:10px;background:#fef3c7;color:#78350f;font-size:13px;display:none}
 .empty{color:var(--mut);text-align:center;padding:30px 10px}
 </style></head><body>
-<header><h1>Ballenoil · Gasolina 95<small id="sub">Cargando…</small></h1><button id="ref" title="Actualizar precios" aria-label="Actualizar precios">⟳</button></header>
+<header><h1>Ballenoil Madrid · Gasolina 95<small id="sub">Cargando…</small></h1><button id="ref" title="Actualizar precios" aria-label="Actualizar precios">⟳</button></header>
 <div class="tabs"><button id="tm" class="on">Mapa</button><button id="tl">Lista</button></div>
 <div id="msg"></div>
 <main>
@@ -38,7 +38,7 @@ main{flex:1;min-height:0;position:relative}
 <div id="list" hidden></div>
 </main>
 <script>
-const API='https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/';
+const API='https://sedeaplicaciones.minetur.gob.es/ServiciosRESTCarburantes/PreciosCarburantes/EstacionesTerrestres/FiltroProvincia/28';
 const $=id=>document.getElementById(id);
 let S=[],me=null,sort='precio',tab='mapa',sel=null,fecha='',view={lat:40.4168,lon:-3.7038,z:500};
 const num=v=>{const n=parseFloat(String(v==null?'':v).replace(',','.'));return isFinite(n)?n:null};
@@ -50,15 +50,15 @@ async function load(){
   $('ref').classList.add('spin');msg('');
   try{
     const r=await fetch(API,{cache:'no-store'});const j=await r.json();
-    S=j.ListaEESSPrecio.filter(e=>/ballenoil/i.test(e['Rótulo']||'')).map(e=>({id:e.IDEESS,name:e['Rótulo'],addr:e['Dirección'],loc:e.Localidad||e.Municipio,p:num(e['Precio Gasolina 95 E5']),lat:num(e.Latitud),lon:num(e['Longitud (WGS84)'])})).filter(e=>e.lat!=null&&e.lon!=null);
-    fecha=j.Fecha;try{localStorage.setItem('bo',JSON.stringify({S,fecha}))}catch(e){}
+    S=j.ListaEESSPrecio.filter(e=>/ballenoil/i.test(e['Rótulo']||'')&&(e.IDCCAA==='13'||/madrid/i.test(e.Provincia||''))).map(e=>({id:e.IDEESS,name:e['Rótulo'],addr:e['Dirección'],loc:e.Localidad||e.Municipio,p:num(e['Precio Gasolina 95 E5']),lat:num(e.Latitud),lon:num(e['Longitud (WGS84)'])})).filter(e=>e.lat!=null&&e.lon!=null);
+    fecha=j.Fecha;try{localStorage.setItem('bo28',JSON.stringify({S,fecha}))}catch(e){}
   }catch(e){
-    let c=null;try{c=JSON.parse(localStorage.getItem('bo'))}catch(_){}
+    let c=null;try{c=JSON.parse(localStorage.getItem('bo28'))}catch(_){}
     if(c){S=c.S;fecha=c.fecha;msg('Sin conexión con el Ministerio: se muestran los últimos precios guardados.')}
     else msg('No se pudieron cargar los precios. Esta página alojada bloquea las conexiones externas; ábrela desde tu propio hosting o navegador.')
   }
   $('ref').classList.remove('spin');
-  $('sub').textContent=S.length?S.length+' estaciones · '+(fecha||'sin fecha'):'Sin datos';
+  $('sub').textContent=S.length?'Comunidad de Madrid · '+S.length+' estaciones · '+(fecha||'sin fecha'):'Sin datos';
   fit();render();
 }
 function locate(cb){
